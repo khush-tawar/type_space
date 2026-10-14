@@ -1,0 +1,19 @@
+{
+  "name": "type_space",
+  "version": "1.0.0",
+  "description": "Parametric font remixer for every script — runs entirely in the browser",
+  "main": "index.js",
+  "scripts": {
+    "test": "node tests/engine.test.mjs && node tests/learner.test.mjs",
+    "e2e": "node tests/e2e.mjs",
+    "start": "python3 -m http.server 5173"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "opentype.js": "^1.3.4",
+    "puppeteer-core": "^23.11.1"
+  }
+}
