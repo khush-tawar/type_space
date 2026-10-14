@@ -2,3 +2,4 @@ node_modules/
 tests/.cache/
 .DS_Store
 *.log
+v1.2/tests/scratch/

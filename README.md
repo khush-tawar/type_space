@@ -1,5 +1,7 @@
 # type_space
 
+> **Versions.** [1.2](https://khush-tawar.github.io/type_space/v1.2/) is the current release (in [`v1.2/`](v1.2/)). [1.0](https://khush-tawar.github.io/type_space/) stays live and unchanged at the root (git tag `v1.0`). The two versions keep separate projects in the browser.
+
 **A parametric font remixer for every script.** Start from any font, borrow letterforms from another script, reshape outlines with precise vector transforms, and export a real, installable font. Unicode mapping, conjuncts, joining and mark positioning stay intact.
 
 type_space runs entirely in the browser. It is a static site with no build step, and your fonts never leave your machine.
@@ -36,13 +38,46 @@ Verified with the test suite and against fontTools:
 - **On-device learner.** Each export is a strong training signal and each setting you settle on is a weak one. A ridge-regression harmoniser learns the scale and weight corrections you make for a given pair of base and donor fonts, and applies them automatically the next time. A style prior learns the moves you typically make for each class of type. You can export and import the data as JSON.
 - **Type assistant (Claude).** Describe an intent, for example "a warm, slightly condensed display cut for a Maithili poetry book". The assistant reads the measured analysis and returns slider settings with reasoning and script-specific cautions. It uses your own Anthropic API key, which is stored only in your browser, and calls `claude-opus-5-5` with structured outputs. Server-side refusal fallbacks are enabled.
 
+## What's new in 1.2
+
+**A stroke-aware outline engine.** In 1.0, strokes were thickened by pushing points along their normals (the FreeType algorithm). That causes spikes at acute corners, folds where strokes overlap, and diagonals going hairline-thin when a font is stretched. 1.2 treats each glyph as a filled region instead:
+
+1. **Merge.** Curves are flattened and overlaps are merged into a single filled shape.
+2. **Transform the core.** For geometric changes (width, slant, zones, ascenders, descenders, waist), the glyph is eroded to a thin core, the core is transformed, and the stroke is regrown. Stroke thickness therefore stays the same in every direction.
+3. **Grow with a pen.** Strokes are grown with an elliptical, rotatable pen, which covers weight, contrast and stress angle.
+4. **Thin proportionally.** Thinning is proportional to local stroke thickness, measured with a shrinking-ball medial radius. Narrow joins and hairlines thin along with the stems instead of snapping off. A topology guard stops any step from splitting a letter.
+5. **Refit.** The result is refitted as clean curves: corners and straight lines are kept exact, nodes sit on extrema, the cubic fit uses the Schneider algorithm, and the curves are converted to quadratics.
+
+The precise engine runs in a Web Worker and caches per glyph. A draft from the point-preserving engine appears instantly while it works.
+
+**New controls:**
+- Pen angle, with script-aware defaults (for example Hebrew 90° and Arabic 70°)
+- Headline (shirorekha) thickness
+- Ascender, descender, waist (moves crossbars and joins), script scale and baseline shift
+- Curve tension, outer and inner corner radius, ink traps
+- Dot and diacritic size
+- Kerning scale
+
+**Morph.** A real variable font with an `MRPH` axis (0 = original, 100 = your remix) is animated in the specimen with live OpenType shaping, and you can export it.
+
+**Style transfer.** Measure a reference font and carry its weight, contrast, stress and slant onto any script. Proportions transfer only within the same script. You can also use a photo of lettering or a written description; both go through the Claude assistant.
+
+**Learning you can verify.**
+- An undo now counts as a negative signal.
+- Nearest-neighbour suggestions come from your past exports.
+- A leave-one-out accuracy chart compares the learned model with no learning at all.
+- 1.2 imports what 1.0 learned without changing 1.0's data.
+
+**Product pages.** About, How it works, Changelog, Privacy, and a Contact form that opens a pre-filled GitHub issue.
+
 ## Run locally
 
 ```bash
 npm install          # only needed for tests (opentype.js, puppeteer-core)
 npm start            # serves on http://localhost:5173
-npm test             # engine + learner tests
-npm run e2e          # drives the app in Chrome (needs `npm start` running)
+npm test             # engine + learner tests for 1.0 and 1.2
+npm run test:fuzz    # 1.2 robustness sweep: 10 fonts × 8 scripts × extreme settings
+npm run e2e:v1.2     # drives 1.2 in Chrome (needs `npm start` running)
 ```
 
 ## Deploy

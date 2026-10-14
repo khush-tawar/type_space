@@ -1,0 +1,48 @@
+// End-to-end test of v1.2 in Chrome. Needs `npm start` (repo root served on :5173).
+import puppeteer from 'puppeteer-core';
+const out = process.argv[2] || '.';
+const URL0 = 'http://localhost:5173/v1.2/';
+const b = await puppeteer.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: 'new', args: ['--window-size=1440,900'] });
+const p = await b.newPage(); await p.setViewport({ width: 1440, height: 900 });
+const errors = [];
+p.on('pageerror', e => errors.push('pageerror: ' + e.message));
+p.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const statusIs = async (re, ms = 90000) => p.waitForFunction(r => new RegExp(r).test(document.querySelector('#statusText')?.textContent || ''), { timeout: ms }, re.source);
+await p.goto(URL0, { waitUntil: 'networkidle0' });
+await p.click('#starters [data-i="0"]');
+await p.waitForFunction(() => document.querySelectorAll('.donor').length === 1, { timeout: 90000 });
+await statusIs(/sanitizer/);
+await p.screenshot({ path: `${out}/v12-01-remix.png` });
+for (const [id, v] of [['#sl-weight', 70], ['#sl-width', 115], ['#sl-slant', 7], ['#sl-headline', 40]]) {
+  await p.$eval(id, (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, v);
+}
+const t0 = Date.now();
+await statusIs(/precise outlines/, 120000);
+console.log('precise ready in', Date.now() - t0, 'ms:', await p.$eval('#statusText', e => e.textContent));
+await p.screenshot({ path: `${out}/v12-02-precise.png` });
+await p.click('.seg [data-compare="morph"]'); await wait(2500);
+console.log('morph font:', await p.$eval('#specRemix', e => e.style.fontFamily + ' | ' + e.style.fontVariationSettings));
+await p.screenshot({ path: `${out}/v12-03-morph.png` });
+await p.click('.seg [data-compare="remix"]');
+await p.goto(URL0 + '#transfer'); await wait(800);
+await p.select('#tRefSelect', await p.$eval('#tRefSelect', s => [...s.options].find(o => o.value.startsWith('lib:bodoni'))?.value));
+await p.click('#tAnalyze');
+await p.waitForFunction(() => document.querySelectorAll('#tTable tr').length > 2, { timeout: 60000 });
+console.log('transfer rows:', await p.$$eval('#tTable tr', r => r.slice(1).map(x => x.innerText.replace(/\s+/g, ' ').trim()).join(' | ')));
+await p.screenshot({ path: `${out}/v12-04-transfer.png` });
+await p.click('#tApply'); await wait(1500);
+console.log('after transfer:', await p.$eval('#statusText', e => e.textContent));
+await p.goto(URL0 + '#glyphs'); await wait(2500);
+await p.click('.gcell:nth-child(70)'); await wait(600);
+await p.screenshot({ path: `${out}/v12-05-glyphs.png` });
+await p.goto(URL0 + '#remix'); await wait(3000);
+await p.click('#exportBtn'); await wait(500);
+await p.screenshot({ path: `${out}/v12-06-export.png` });
+await p.goto(URL0 + '#learn'); await wait(800); await p.screenshot({ path: `${out}/v12-07-learn.png` });
+await p.goto(URL0 + '#about'); await wait(500); await p.screenshot({ path: `${out}/v12-08-about.png`, fullPage: false });
+await p.goto(URL0 + '#contact'); await wait(500); await p.screenshot({ path: `${out}/v12-09-contact.png` });
+await p.goto('http://localhost:5173/'); await wait(1500);
+console.log('v1.0 still at root:', await p.$eval('title', t => t.textContent), '| v1.2 project isolated:', await p.$eval('#emptyState', e => !e.hidden));
+console.log('errors:', errors.length ? errors.join('\n') : 'none');
+await b.close();

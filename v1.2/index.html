@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>type_space 1.2 — remix type across scripts</title>
+  <meta name="description" content="A browser-based font remixer: mix scripts and styles, tweak outlines parametrically, and export real, installable fonts with OpenType shaping intact." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23111'/%3E%3Ctext x='32' y='44' font-family='Georgia' font-size='34' text-anchor='middle' fill='%23fff'%3Et_%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/app.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "opentype.js": "https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.module.js",
+      "@anthropic-ai/sdk": "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.133.0/+esm",
+      "clipper-lib": "https://cdn.jsdelivr.net/npm/clipper-lib@6.4.2/+esm"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
+
+  <header class="topbar glass">
+    <a class="brand" href="#remix" aria-label="type_space home">type<span>_</span>space<sup class="ver">1.2</sup></a>
+    <nav class="tabs" role="tablist">
+      <a href="#remix" data-view="remix" class="is-active">Remix</a>
+      <a href="#glyphs" data-view="glyphs">Glyphs</a>
+      <a href="#library" data-view="library">Fonts</a>
+      <a href="#scripts" data-view="scripts">Scripts</a>
+      <a href="#transfer" data-view="transfer">Style transfer</a>
+      <a href="#learn" data-view="learn">AI &amp; Learning</a>
+    </nav>
+    <div class="topbar__actions">
+      <button class="btn btn--ghost" id="undoBtn" title="Undo (⌘Z)" disabled>Undo</button>
+      <button class="btn btn--ghost" id="redoBtn" title="Redo (⇧⌘Z)" disabled>Redo</button>
+      <button class="btn btn--primary" id="exportBtn" disabled>Export font</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- REMIX -->
+    <section class="view is-active" id="view-remix">
+      <div class="empty" id="emptyState">
+        <p class="eyebrow">Parametric font remixer · 50+ scripts</p>
+        <h1 class="hero">Remix type<br /><em>across scripts.</em></h1>
+        <p class="lede">Start from any font, borrow letterforms from another script, reshape the outlines with precise vector transforms, and export a real font — with Unicode mapping, conjuncts and mark positioning intact.</p>
+        <div class="empty__ctas">
+          <label class="btn btn--primary btn--lg">Upload a font<input type="file" accept=".ttf,.otf,.woff,.ttc" id="uploadBase" hidden /></label>
+          <a class="btn btn--glass btn--lg" href="#library">Browse 70 open fonts</a>
+        </div>
+        <p class="eyebrow">Or start with a pairing</p>
+        <div class="starters" id="starters"></div>
+        <p class="drop-hint">You can also drop a .ttf / .otf / .woff anywhere on this page.</p>
+      </div>
+
+      <div class="workspace" id="workspace" hidden>
+        <aside class="panel glass" id="sourcesPanel">
+          <div class="panel__head"><h2>Sources</h2></div>
+          <div id="baseCard"></div>
+          <div class="panel__section">
+            <div class="row-between"><h3>Donor fonts</h3><button class="btn btn--small btn--glass" id="addDonorBtn">+ Add</button></div>
+            <p class="hint">Borrow a script (or punctuation &amp; figures) from another font. It is scaled to the base's main zone and its stems are matched automatically.</p>
+            <div id="donorList"></div>
+          </div>
+        </aside>
+
+        <section class="stage">
+          <div class="stage__bar glass">
+            <div class="chips" id="sampleChips" role="tablist" aria-label="Preview script"></div>
+            <div class="stage__controls">
+              <div class="seg" role="radiogroup" aria-label="Compare">
+                <button data-compare="remix" class="is-on">Remix</button>
+                <button data-compare="split">Compare</button>
+                <button data-compare="overlay">Overlay</button>
+                <button data-compare="morph">Morph</button>
+              </div>
+              <label class="mini-range" title="Preview size"><span>Size</span><input type="range" id="sizeRange" min="16" max="220" value="88" /></label>
+            </div>
+          </div>
+          <div class="morphbar glass" id="morphBar" hidden>
+            <button class="btn btn--small btn--primary" id="morphPlay">Pause</button>
+            <span class="hint">Original</span>
+            <input type="range" id="morphRange" min="0" max="100" value="0" step="0.5" aria-label="Morph position" />
+            <span class="hint">Remix</span>
+            <span class="hint" id="morphNote">A real variable font (axis MRPH) interpolating your source into the remix — shaping stays live.</span>
+          </div>
+          <div class="specimen glass" id="specimen">
+            <div class="specimen__line" id="specRemix" contenteditable="true" spellcheck="false"></div>
+            <div class="specimen__line specimen__line--orig" id="specOrig" aria-hidden="true"></div>
+          </div>
+          <div class="waterfall glass" id="waterfall"></div>
+          <div class="statusbar" id="statusbar"><span id="statusText">Ready</span><span id="warnText"></span></div>
+        </section>
+
+        <aside class="panel glass" id="paramsPanel">
+          <div class="panel__head row-between">
+            <h2>Parameters</h2>
+            <button class="btn btn--small btn--ghost" id="resetParams">Reset</button>
+          </div>
+          <div class="scope">
+            <label for="scopeSelect">Apply to</label>
+            <select id="scopeSelect"></select>
+          </div>
+          <div class="engine-row">
+            <div class="seg" role="radiogroup" aria-label="Outline engine">
+              <button data-engine="precise" class="is-on" title="Stroke-aware engine: clean overlaps, constant stroke thickness, refitted curves">Precise</button>
+              <button data-engine="draft" title="Point-preserving instant engine (v1.0 behaviour)">Draft</button>
+            </div>
+            <span class="hint" id="engineState"></span>
+          </div>
+          <div id="axesBox"></div>
+          <div id="sliders"></div>
+          <div class="panel__section">
+            <h3>Presets</h3>
+            <div class="chips chips--wrap" id="presets"></div>
+          </div>
+          <div class="panel__section ai-box">
+            <h3>Ask the type assistant</h3>
+            <textarea id="aiPrompt" rows="3" placeholder="e.g. a warm, slightly condensed display cut for a Maithili poetry book"></textarea>
+            <div class="row-between">
+              <button class="btn btn--small btn--primary" id="aiGo">Suggest</button>
+              <span class="hint" id="aiState"></span>
+            </div>
+            <div id="aiResult"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- GLYPHS -->
+    <section class="view" id="view-glyphs">
+      <div class="glyphs-layout">
+        <div class="glyphs-main">
+          <div class="toolbar glass">
+            <input type="search" id="glyphSearch" placeholder="Search a character, name or U+0915" />
+            <select id="glyphScript"></select>
+            <label class="toggle"><input type="checkbox" id="glyphShowEdited" /> Edited only</label>
+            <span class="hint" id="glyphCount"></span>
+          </div>
+          <div class="glyph-grid" id="glyphGrid"></div>
+        </div>
+        <aside class="inspector glass" id="inspector">
+          <div class="inspector__empty">Select a glyph to inspect its outline, points and metrics.</div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- LIBRARY -->
+    <section class="view" id="view-library">
+      <div class="lib-head">
+        <h1 class="title">Fonts</h1>
+        <p class="lede">Open-licensed families from the Google Fonts repository. Load one as the base, or add it as a donor for a script.</p>
+        <div class="toolbar glass">
+          <input type="search" id="libSearch" placeholder="Search families or scripts" />
+          <div class="chips" id="libFilters"></div>
+        </div>
+      </div>
+      <div class="lib-list" id="libList"></div>
+    </section>
+
+    <!-- SCRIPTS -->
+    <section class="view" id="view-scripts">
+      <div class="lib-head">
+        <h1 class="title">Scripts</h1>
+        <p class="lede">Many writing systems are encoded in Unicode yet have only one or two digital typefaces. Pick a script to start a new design for it — type_space keeps its shaping rules while you build a fresh voice.</p>
+        <div class="toolbar glass"><div class="chips" id="scriptFilters"></div></div>
+      </div>
+      <div class="script-grid" id="scriptGrid"></div>
+    </section>
+
+    <!-- STYLE TRANSFER -->
+    <section class="view" id="view-transfer">
+      <div class="lib-head">
+        <h1 class="title">Style transfer</h1>
+        <p class="lede">Measure the style of a reference — another font, a photo of lettering, or a description — and carry it onto your base font's scripts. Measurements are taken from real outlines (stems, bars, contrast, stress, proportions, slant), so a Didone Latin can lend its contrast to Tirhuta, or a geometric grotesque its monoline rhythm to Ol Chiki.</p>
+      </div>
+      <div class="transfer-grid">
+        <div class="card glass">
+          <h3>1 · Reference</h3>
+          <div class="seg" style="margin:6px 0 12px"><button data-tsrc="font" class="is-on">Font</button><button data-tsrc="image">Image</button><button data-tsrc="text">Description</button></div>
+          <div data-tpane="font">
+            <select id="tRefSelect" class="inline-select" style="width:100%;height:34px"></select>
+            <label class="btn btn--small btn--glass" style="margin-top:8px">Upload reference font<input type="file" accept=".ttf,.otf,.woff,.ttc" id="tRefUpload" hidden /></label>
+            <p class="hint">Loaded donors and library fonts can be references. The reference is only measured — its glyphs are not imported.</p>
+          </div>
+          <div data-tpane="image" hidden>
+            <label class="btn btn--small btn--glass">Choose an image of lettering<input type="file" accept="image/*" id="tImg" hidden /></label>
+            <img id="tImgPreview" alt="" style="display:block;max-height:140px;margin-top:10px;border-radius:10px" hidden />
+            <p class="hint">The type assistant (Claude, your API key) reads the image and estimates stroke weight, contrast, stress, proportions and slant relative to your font.</p>
+          </div>
+          <div data-tpane="text" hidden>
+            <textarea id="tText" rows="4" placeholder="e.g. 1920s Bombay film-poster lettering: heavy, high-waisted, slightly extended"></textarea>
+          </div>
+          <button class="btn btn--primary btn--small" id="tAnalyze" style="margin-top:10px">Measure reference</button>
+          <span class="hint" id="tState"></span>
+        </div>
+        <div class="card glass">
+          <h3>2 · What transfers</h3>
+          <div id="tTable"><p class="hint">Pick a reference and measure it.</p></div>
+        </div>
+        <div class="card glass">
+          <h3>3 · Apply</h3>
+          <div class="slider"><div class="slider__top"><label for="tStrength">Strength</label><output id="tStrengthOut">100%</output></div><input type="range" id="tStrength" min="0" max="150" value="100" /></div>
+          <label class="scope" style="margin:10px 0">Target<select id="tScope"></select></label>
+          <div id="tPreview" class="hint"></div>
+          <button class="btn btn--primary" id="tApply" disabled>Apply to remix</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABOUT / HOW IT WORKS / CHANGELOG -->
+    <section class="view" id="view-about">
+      <article class="prose">
+        <p class="eyebrow">About</p>
+        <h1 class="title">A type tool for every script.</h1>
+        <p class="lede">type_space is an open, browser-based font remixer for graphic and type designers. It turns the slow parts of extending a typeface — weights, widths, matching a Latin to an Indic or African script, harmonising proportions — into precise, reversible operations on real outlines, and exports installable fonts with Unicode mapping and OpenType shaping intact.</p>
+        <p>Many writing systems are encoded in Unicode but have one typeface, sometimes none. Tirhuta, Modi, Lepcha, Bamum, Wancho and dozens more deserve a range of voices. type_space starts from the open fonts that exist and helps designers grow them into families.</p>
+        <h2 id="how">How it works</h2>
+        <ol class="steps">
+          <li><b>Read.</b> Fonts are parsed table by table in your browser: exact TrueType points, CFF converted to quadratics, variable fonts instanced from gvar.</li>
+          <li><b>Measure.</b> Stems, bars, contrast, stress, zones and headlines are measured from the outlines for every script the font covers.</li>
+          <li><b>Draft.</b> Every change is previewed instantly with a point-preserving engine — the same outlines drive the morph animation.</li>
+          <li><b>Refine.</b> A stroke-aware engine then rebuilds each glyph as a filled region: overlaps merged, the letter's core transformed, the stroke regrown with an elliptical pen, thinning proportional to local thickness, and curves refitted with nodes on extrema. No spikes, folds or snapped joins.</li>
+          <li><b>Compile.</b> A TrueType font is written with your new names; GSUB and other layout tables are carried over, and GPOS anchors and kerning are moved with the outlines.</li>
+          <li><b>Learn.</b> Your exports and the settings you keep train an on-device model that predicts how you harmonise scripts and what you typically do with each class of type.</li>
+        </ol>
+        <h2 id="changelog">Changelog</h2>
+        <h3>1.2</h3>
+        <ul>
+          <li>Stroke-aware precise engine: constant stroke thickness under width, slant and zone changes; proportional thinning that never snaps joins; overlap removal; refitted curves.</li>
+          <li>New controls: pen angle (script-aware stress), headline (shirorekha) thickness, ascender, descender, waist, script scale, baseline, curve tension, inner and outer corner radius, ink traps, dot &amp; diacritic size, kerning scale.</li>
+          <li>Morph mode and exportable variable font (Original ↔ Remix axis).</li>
+          <li>Style transfer from fonts, images and descriptions.</li>
+          <li>Learning: undo is a negative signal, nearest-neighbour suggestions, and a transparent accuracy report.</li>
+          <li>About, privacy and contact pages.</li>
+        </ul>
+        <h3>1.0</h3>
+        <ul><li>First release: remixing across scripts, parametric transforms, glyph point editor, export. <a href="../">Still available here.</a></li></ul>
+      </article>
+    </section>
+
+    <section class="view" id="view-privacy">
+      <article class="prose">
+        <p class="eyebrow">Privacy</p>
+        <h1 class="title">Your fonts stay with you.</h1>
+        <ul>
+          <li>Fonts you upload are processed entirely in your browser. They are never sent to a server.</li>
+          <li>Library fonts are downloaded directly from the public Google Fonts repository on GitHub.</li>
+          <li>Your project, learning data and API key are stored in this browser (IndexedDB and localStorage). Clearing site data removes them.</li>
+          <li>The type assistant is optional. When you use it, the measured analysis of your font (numbers, not the font file), your request and — for image transfer — your image are sent from your browser to Anthropic using your own API key.</li>
+          <li>There is no analytics, no tracking and no account.</li>
+        </ul>
+        <p class="hint">Fonts keep their own licenses. Open Font License fonts can be modified and redistributed under the OFL with a new family name.</p>
+      </article>
+    </section>
+
+    <section class="view" id="view-contact">
+      <article class="prose">
+        <p class="eyebrow">Contact</p>
+        <h1 class="title">Talk to us.</h1>
+        <p class="lede">Found a font that breaks, want a script supported, or working on a typeface for a language community? We would love to hear from you.</p>
+        <form class="contact card glass" id="contactForm">
+          <div class="form-grid">
+            <label>Name<input id="cName" autocomplete="name" /></label>
+            <label>Topic<select id="cTopic" class="inline-select" style="height:36px"><option>Bug report</option><option>Script support</option><option>Feature idea</option><option>Collaboration</option><option>Other</option></select></label>
+          </div>
+          <label class="stack">Message<textarea id="cMsg" rows="6" required placeholder="What happened, which font and script, and what you expected."></textarea></label>
+          <label class="toggle"><input type="checkbox" id="cDiag" checked /> Attach diagnostics (app version, browser, base font name and settings — never the font file)</label>
+          <div class="row-gap"><button class="btn btn--primary" type="submit">Send via GitHub</button><span class="hint">Opens a pre-filled issue on GitHub in a new tab — you review it before posting.</span></div>
+        </form>
+        <p class="hint" id="contactAlt"></p>
+      </article>
+    </section>
+    <section class="view" id="view-learn">
+      <div class="lib-head">
+        <h1 class="title">AI &amp; Learning</h1>
+        <p class="lede">type_space learns from how you work. Every export and every setting you settle on becomes a training example for an on-device model that predicts how you like scripts harmonised and which moves you make for each class of type.</p>
+      </div>
+      <div class="learn-grid">
+        <div class="card glass" id="learnStats"></div>
+        <div class="card glass" id="learnPrior"></div>
+        <div class="card glass">
+          <h3>Type assistant (Claude)</h3>
+          <p class="hint">The assistant reads the measured analysis of your font and returns parameter settings with typographic reasoning. Your key is stored only in this browser and requests go directly from your browser to Anthropic.</p>
+          <div class="keyrow">
+            <input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off" />
+            <button class="btn btn--small btn--primary" id="saveKey">Save</button>
+            <button class="btn btn--small btn--ghost" id="clearKey">Remove</button>
+          </div>
+          <p class="hint" id="keyState"></p>
+        </div>
+        <div class="card glass">
+          <h3>Your training data</h3>
+          <p class="hint">Export your examples to back them up, move them to another machine, or pool them with collaborators. Import merges with what is already here.</p>
+          <div class="row-gap">
+            <button class="btn btn--small btn--glass" id="exportLearn">Export JSON</button>
+            <label class="btn btn--small btn--glass">Import JSON<input type="file" accept=".json" id="importLearn" hidden /></label>
+            <button class="btn btn--small btn--ghost" id="resetLearn">Reset</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="brand">type<span>_</span>space</div>
+    <nav><a href="#about">About</a><a href="#about" data-anchor="how">How it works</a><a href="#about" data-anchor="changelog">Changelog</a><a href="#privacy">Privacy</a><a href="#contact">Contact</a><a href="https://github.com/khush-tawar/type_space" target="_blank" rel="noopener">GitHub</a><a href="../">Version 1.0</a></nav>
+    <span class="hint">Open source · MIT · fonts keep their own licenses</span>
+  </footer>
+
+  <!-- EXPORT DRAWER -->
+  <div class="modal" id="exportModal" hidden>
+    <div class="modal__card glass" role="dialog" aria-modal="true" aria-labelledby="exportTitle">
+      <div class="row-between"><h2 id="exportTitle">Export font</h2><button class="btn btn--ghost btn--small" data-close>Close</button></div>
+      <div class="form-grid">
+        <label>Family name<input id="exFamily" /></label>
+        <label>Style<input id="exStyle" list="styleList" /></label>
+        <datalist id="styleList"><option>Regular</option><option>Bold</option><option>Italic</option><option>Bold Italic</option><option>Display</option><option>Condensed</option><option>Light</option></datalist>
+        <label>Version<input id="exVersion" value="1.000" /></label>
+        <label>Designer<input id="exDesigner" placeholder="Your name" /></label>
+      </div>
+      <div class="license" id="exLicense"></div>
+      <div id="exCoverage"></div>
+      <div id="exChecks"></div>
+      <div class="row-gap">
+        <button class="btn btn--primary" id="dlTtf">Download .ttf</button>
+        <button class="btn btn--glass" id="dlWoff">Download .woff</button>
+        <button class="btn btn--ghost" id="copyCss">Copy @font-face CSS</button>
+      </div>
+      <div class="row-gap">
+        <button class="btn btn--glass btn--small" id="dlMorph">Download morph variable font</button>
+        <span class="hint">Original ↔ Remix on one axis (MRPH), built from the draft outlines.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="pickModal" hidden>
+    <div class="modal__card glass">
+      <div class="row-between"><h2 id="pickTitle">Add a donor font</h2><button class="btn btn--ghost btn--small" data-close>Close</button></div>
+      <label class="btn btn--primary">Upload a font file<input type="file" accept=".ttf,.otf,.woff,.ttc" id="uploadDonor" hidden /></label>
+      <input type="search" id="pickSearch" placeholder="…or search the library" />
+      <div class="pick-list" id="pickList"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="dropzone" id="dropzone" hidden><div>Drop a font to load it as the base</div></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

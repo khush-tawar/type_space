@@ -24,6 +24,7 @@ jobs:
           node-version: 22
       - run: npm ci --omit=optional
       - run: node tests/engine.test.mjs && node tests/learner.test.mjs
+      - run: node v1.2/tests/engine.test.mjs && node v1.2/tests/learner.test.mjs
 
   deploy:
     needs: test
@@ -34,7 +35,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Assemble static site
-        run: mkdir _site && cp -r index.html css js _site/ && touch _site/.nojekyll
+        run: |
+          mkdir -p _site/v1.2
+          cp -r index.html css js _site/
+          cp -r v1.2/index.html v1.2/css v1.2/js _site/v1.2/
+          touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
